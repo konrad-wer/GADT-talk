@@ -1,0 +1,121 @@
+/*
+  reflection of types of kind N into runtime values
+*/
+data Nat N where
+  | Z :: Nat 0
+  | Succ :: forall n : N . Nat n -> Nat (S n)
+
+/*
+  computes length of Vec expressed as a value of type Nat
+*/
+def len :: forall n : N, a : * . Vec n a -> Nat n
+def len [] = Z
+def len (x : xs) = Succ <| len xs
+
+def natToInt :: forall n : N. Nat n -> Int
+def natToInt Z = 0
+def natToInt (Succ n) = natToInt n + 1
+
+def range :: forall n : N. Nat n -> Vec n Int
+def range n =
+  rec :: forall n : N. Nat n -> Int -> Vec n Int :
+    r n i = case n of
+      | Z -> []
+      | (Succ n) -> i : r n (i + 1)
+  in r n 0
+
+/*
+  checks if Vec has length specified by the value of type Nat
+  if yes: returns Vec with updated type
+  if no:  throws error
+*/
+def hasLen :: forall n : N, k : N, a : * . Vec k a -> Nat n -> Vec n a
+def hasLen [] Z = []
+def hasLen (x : xs) (Succ n) = x : hasLen xs n
+def hasLen _ _ = error: "Vec has wrong len"
+
+/*
+  reads matrix from stdio and checks if given input has rectangular shape
+*/
+def readMatrix :: () -> exists n : N, m : N . Vec (S n) (Vec (S m) Int)
+def readMatrix () =
+  rec :: forall k : N . Nat k -> exists n : N, m : N . Vec n (Vec k Int) :
+    rm l = case getLine () of
+      | "" -> []
+      | line ->
+        let splitedLine = split line in
+        let ints = map intFromString splitedLine in
+        let tail = rm l in
+        hasLen ints l : tail
+  in case getLine () of
+    | "" -> error: "Empty matrix"
+    | line -> case split line of
+      | [] -> error: "Empty matrix"
+      | (x : xs) -> let rest = rm (len (x : xs)) in
+        map intFromString (x : xs) : rest
+
+/*
+  split string on spaces producing Vec of strings
+*/
+def split :: String -> exists n : N . Vec n String
+def split s =
+  rec :: List Char -> List Char -> exists n : N . Vec n String :
+    splt str acc = case str of
+      | {} -> (case acc of
+          | {} -> []
+          | _ -> [stringFromList . reverseL <| acc])
+      | (' ' ; xs) ->
+        (case acc of
+          | {} -> splt xs acc
+          | _ -> let tail = splt xs {} in (stringFromList . reverseL <| acc) : tail)
+      | (x ; xs) -> splt xs (x ; acc)
+  in splt (stringToList s) {}
+
+/*
+  prints row of the matrix into stdio
+*/
+def printRow :: ∀ n : N . Vec n Int -> ()
+def printRow [] = putStrLn ""
+def printRow (x : xs) = (putStr . intToString) x `seq` putChar ' ' `seq` printRow xs
+
+def main :: ()
+def main =
+  try:
+    let m1 = readMatrix () in
+    let m2 = readMatrix () in
+    let res = m1 `mult` hasLen m2 (len <| head m1) in
+    iter printRow res
+  catch:
+    | RuntimeException msg -> putStrLn msg
+
+//Matrix Algebra////////////////////////////////////////////////////////////////
+
+def mult :: ∀ n : N, m : N, k : N .
+  Vec (S n) (Vec (S m) Int) ->
+  Vec (S m) (Vec (S k) Int) ->
+  Vec (S n) (Vec (S k) Int)
+def mult a b = map ((flip multVec) b) a
+
+def multVec :: ∀ n : N, m : N .
+  Vec (S n) Int ->
+  Vec (S n) (Vec (S m) Int) ->
+  Vec (S m) Int
+def multVec v m = map (foldl1 (λ x y -> x + y)) (map (zipWith (λ x y -> x * y) v) (transpose m))
+
+def transpose :: ∀ n : N, m : N .
+  Vec (S n) (Vec (S m) Int) ->
+  Vec (S m) (Vec (S n) Int)
+def transpose matrix =
+  let indices = range (len (head matrix)) in
+  map (\v -> column v matrix) indices
+
+def column :: ∀ n : N, m : N .
+  Int ->
+  Vec (S n) (Vec (S m) Int) ->
+  Vec (S n) Int
+def column i = map (nth i)
+
+def nth :: ∀ n : N, a : * . Int -> Vec (S n) a -> a
+def nth 0 (x : xs) = x
+def nth _ [x] = x
+def nth n (x1 : x2 : xs) = nth (n - 1) (x2 : xs)
